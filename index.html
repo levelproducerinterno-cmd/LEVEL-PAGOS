@@ -468,6 +468,10 @@ document.getElementById('btn-generar-mensajes').addEventListener('click', () => 
     status.textContent = 'Pon primero el link del video del mes arriba.';
     return;
   }
+  const titulo = document.getElementById('f-titulo').value.trim();
+  const invitacionFrase = document.getElementById('f-invitacion').value.trim();
+  const retosLines = document.getElementById('f-retos').value.split('\n').map(s=>s.trim()).filter(Boolean);
+
   const personasValidas = equipo.filter(p => p.nombre.trim() && p.telefono.trim());
   if(!personasValidas.length){
     status.textContent = 'Agrega al menos una persona con nombre y teléfono en Equipo.';
@@ -477,7 +481,7 @@ document.getElementById('btn-generar-mensajes').addEventListener('click', () => 
   const container = document.getElementById('messages-list');
   container.innerHTML = '';
   personasValidas.forEach(persona => {
-    const mensaje = construyeMensaje(persona.nombre.trim(), link);
+    const mensaje = construyeMensaje(persona.nombre.trim(), link, titulo, invitacionFrase, retosLines);
     const telLimpio = persona.telefono.replace(/[^0-9]/g, '');
     const waLink = `https://wa.me/${telLimpio}?text=${encodeURIComponent(mensaje)}`;
 
