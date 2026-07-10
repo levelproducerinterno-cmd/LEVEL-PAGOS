@@ -37,6 +37,10 @@
   }
   textarea{min-height:110px;resize:vertical;line-height:1.5;}
   .hint{font-size:0.78rem;color:#8a8578;margin-top:6px;}
+  .chips{display:flex;flex-wrap:wrap;gap:8px;}
+  .chip{border:1.5px solid #d8d3c9;color:#333;padding:8px 14px;border-radius:20px;font-size:0.82rem;cursor:pointer;background:#fff;}
+  .chip:hover{border-color:var(--rojo);}
+  .chip.selected{background:var(--rojo);color:#fff;border-color:var(--rojo);}
   .generate-btn{width:100%;background:var(--rojo);color:#fff;border:none;padding:16px;font-size:0.95rem;letter-spacing:0.05em;text-transform:uppercase;font-weight:600;border-radius:2px;cursor:pointer;margin-top:8px;}
   .generate-btn:disabled{opacity:0.5;cursor:wait;}
   .generate-btn:hover:not(:disabled){background:#a8230a;}
@@ -98,25 +102,29 @@
   <div class="card">
     <h2>Video del mes</h2>
     <div class="field">
-      <label>Título del video</label>
-      <input type="text" id="f-titulo" placeholder='Ej. Podcast con Marian Rojas'>
-    </div>
-    <div class="field">
       <label>Link de YouTube</label>
       <input type="text" id="f-link" placeholder="https://youtu.be/...">
-      <div class="hint">La miniatura se busca sola en cuanto pegas el link.</div>
+      <div class="hint">La miniatura y el título se buscan solos en cuanto pegas el link.</div>
     </div>
     <div class="field">
-      <label>Frase de invitación (después de mencionar el tema)</label>
-      <input type="text" id="f-invitacion" placeholder='Ej. te invito este mes a estar presente.'>
+      <label>Título del video <span style="text-transform:none;font-weight:400;">(se autocompleta, editable)</span></label>
+      <input type="text" id="f-titulo" placeholder='Ej. Podcast con Marian Rojas'>
+      <div class="hint" id="hint-titulo"></div>
     </div>
     <div class="field">
-      <label>Retos del mes (uno por línea)</label>
+      <label>Frase final de invitación — elige una o escribe la tuya</label>
+      <div class="chips" id="chips-invitacion"></div>
+      <input type="text" id="f-invitacion" placeholder='Ej. estar presente' style="margin-top:10px;">
+      <div class="hint">Se arma como: "...te invito este mes a <strong>[esta frase]</strong>."</div>
+    </div>
+    <div class="field">
+      <label>Retos del mes — da clic para agregar, o escribe los tuyos</label>
+      <div class="chips" id="chips-retos"></div>
       <textarea id="f-retos" placeholder="Dejando el celular una hora antes de dormir
 Tomarte 5 min para meditar
 Trabajar estando presente
 Hacer alguna actividad sin el celular
-Leer un libro"></textarea>
+Leer un libro" style="margin-top:10px;"></textarea>
     </div>
     <button class="generate-btn" id="btn-generar-imagen">Generar imagen del video del mes</button>
     <div class="status" id="status-imagen"></div>
@@ -177,7 +185,12 @@ async function cargarEquipo(){
     console.warn('No se pudo cargar el equipo desde storage (normal si el sitio corre fuera de Claude):', e);
   }
   if(!equipo.length){
-    equipo = [{nombre:'', telefono:''}];
+    equipo = [
+      {nombre:'Fer', telefono:'524421554773'},
+      {nombre:'Sebas', telefono:'529612681404'},
+      {nombre:'Santi', telefono:'525540777742'},
+      {nombre:'Mich', telefono:'524422729795'}
+    ];
   }
   renderEquipo();
 }
@@ -273,6 +286,97 @@ function thumbUrlProxied(videoId, calidad){
   return `https://images.weserv.nl/?url=${encodeURIComponent(original)}`;
 }
 
+// ============ Autocompletar título vía YouTube oEmbed (sin IA, sin llave, funciona en cualquier lado) ============
+let tituloEditadoManualmente = false;
+document.getElementById('f-titulo').addEventListener('input', () => { tituloEditadoManualmente = true; });
+
+async function autocompletaTitulo(link){
+  const hint = document.getElementById('hint-titulo');
+  const videoId = extraeYoutubeId(link);
+  if(!videoId){ return; }
+  hint.textContent = 'Buscando título...';
+  try{
+    const resp = await fetch(`https://www.youtube.com/oembed?url=${encodeURIComponent(link)}&format=json`);
+    if(!resp.ok) throw new Error('oEmbed no respondió bien');
+    const data = await resp.json();
+    if(data.title && !tituloEditadoManualmente){
+      document.getElementById('f-titulo').value = data.title;
+    }
+    hint.textContent = data.title ? '' : 'No se encontró título, escríbelo tú.';
+  } catch(e){
+    hint.textContent = 'No se pudo obtener el título automáticamente, escríbelo tú.';
+    console.warn('oEmbed error:', e);
+  }
+}
+
+let linkDebounce;
+document.getElementById('f-link').addEventListener('input', (e) => {
+  clearTimeout(linkDebounce);
+  const val = e.target.value.trim();
+  linkDebounce = setTimeout(() => autocompletaTitulo(val), 500);
+});
+
+// ============ Chips de opciones: frase de invitación ============
+const OPCIONES_INVITACION = [
+  'estar presente',
+  'ser constante',
+  'cuidar tu energía',
+  'invertir en ti mismo',
+  'salir de tu zona de confort',
+  'celebrar tus logros, por pequeños que sean',
+  'cuidar tus relaciones más importantes',
+  'priorizar tu salud mental',
+  'descansar sin culpa',
+  'agradecer más seguido'
+];
+
+const chipsInvitacionEl = document.getElementById('chips-invitacion');
+OPCIONES_INVITACION.forEach(texto => {
+  const chip = document.createElement('div');
+  chip.className = 'chip';
+  chip.textContent = texto;
+  chip.addEventListener('click', () => {
+    document.getElementById('f-invitacion').value = texto;
+    chipsInvitacionEl.querySelectorAll('.chip').forEach(c => c.classList.remove('selected'));
+    chip.classList.add('selected');
+  });
+  chipsInvitacionEl.appendChild(chip);
+});
+
+// ============ Chips de opciones: retos del mes ============
+const OPCIONES_RETOS = [
+  'Dejar el celular una hora antes de dormir',
+  'Tomarte 5 min para meditar',
+  'Trabajar estando presente, sin distracciones',
+  'Hacer alguna actividad sin el celular',
+  'Leer un libro',
+  'Salir a caminar sin audífonos',
+  'Agradecer 3 cosas antes de dormir',
+  'Tomar agua constantemente durante el día',
+  'Escribir tus pendientes del día siguiente antes de dormir',
+  'Desconectarte una hora los fines de semana'
+];
+
+const chipsRetosEl = document.getElementById('chips-retos');
+OPCIONES_RETOS.forEach(texto => {
+  const chip = document.createElement('div');
+  chip.className = 'chip';
+  chip.textContent = texto;
+  chip.addEventListener('click', () => {
+    const area = document.getElementById('f-retos');
+    const lineas = area.value.split('\n').map(s=>s.trim()).filter(Boolean);
+    if(chip.classList.contains('selected')){
+      area.value = lineas.filter(l => l !== texto).join('\n');
+      chip.classList.remove('selected');
+    } else {
+      lineas.push(texto);
+      area.value = lineas.join('\n');
+      chip.classList.add('selected');
+    }
+  });
+  chipsRetosEl.appendChild(chip);
+});
+
 async function waitForFonts(){
   const combos = ['500 78px "Cormorant Garamond"', '400 20px "Montserrat"', '700 20px "Montserrat"', '400 19px "Montserrat"', '700 14px "Montserrat"'];
   try{ await Promise.all(combos.map(f => document.fonts.load(f))); } catch(e){}
@@ -287,14 +391,13 @@ async function generarImagenVideo(){
 
   const titulo = document.getElementById('f-titulo').value.trim() || 'Título del video';
   const link = document.getElementById('f-link').value.trim();
-  const invitacionTexto = document.getElementById('f-invitacion').value.trim() || 'te invito este mes a estar presente.';
+  const invitacionFrase = document.getElementById('f-invitacion').value.trim() || 'estar presente';
   const retosLines = document.getElementById('f-retos').value.split('\n').map(s=>s.trim()).filter(Boolean);
 
   document.getElementById('r-titulo').textContent = `"${titulo}"`;
 
-  const partes = invitacionTexto.split(/(estar [^.]+|presente|constante|consciente)/i);
   document.getElementById('r-invitacion').innerHTML =
-    `Por el tema del video del mes te invito este mes a <strong>${invitacionTexto.replace(/^te invito este mes a\s*/i,'')}</strong>`;
+    `Por el tema del video del mes te invito este mes a <strong>${invitacionFrase}</strong>`;
 
   const ol = document.getElementById('r-retos-list');
   ol.innerHTML = '';
